@@ -75,9 +75,13 @@ def grille_pleine(grille):
     return not colonnes_jouables(grille)
 
 
+def autre(jeton):
+    return JETONS[0] if jeton == JETONS[1] else JETONS[1]
+
+
 def coup_ordinateur(grille, jeton):
     """IA simple : gagne si possible, bloque sinon, sinon joue au centre."""
-    adversaire = JETONS[0] if jeton == JETONS[1] else JETONS[1]
+    adversaire = autre(jeton)
     jouables = colonnes_jouables(grille)
 
     # Gagner immédiatement
@@ -99,6 +103,96 @@ def coup_ordinateur(grille, jeton):
     # Préférer les colonnes centrales
     centre = COLONNES // 2
     return min(jouables, key=lambda c: (abs(c - centre), random.random()))
+
+
+# ---------------------------------------------------------------------------
+# IA minimax
+# ---------------------------------------------------------------------------
+
+PROFONDEUR_MINIMAX = 6
+SCORE_VICTOIRE = 1_000_000
+
+
+def fenetres(grille):
+    """Tous les alignements de 4 cases du plateau."""
+    for l in range(LIGNES):
+        for c in range(COLONNES - 3):
+            yield [grille[l][c + i] for i in range(4)]
+    for l in range(LIGNES - 3):
+        for c in range(COLONNES):
+            yield [grille[l + i][c] for i in range(4)]
+    for l in range(LIGNES - 3):
+        for c in range(COLONNES - 3):
+            yield [grille[l + i][c + i] for i in range(4)]
+    for l in range(3, LIGNES):
+        for c in range(COLONNES - 3):
+            yield [grille[l - i][c + i] for i in range(4)]
+
+
+def evaluer(grille, jeton):
+    """Score heuristique du plateau du point de vue de `jeton`."""
+    adversaire = autre(jeton)
+    score = 0
+    for fenetre in fenetres(grille):
+        miens = fenetre.count(jeton)
+        siens = fenetre.count(adversaire)
+        vides = fenetre.count(VIDE)
+        if miens == 3 and vides == 1:
+            score += 50
+        elif miens == 2 and vides == 2:
+            score += 10
+        if siens == 3 and vides == 1:
+            score -= 80
+        elif siens == 2 and vides == 2:
+            score -= 10
+    centre = COLONNES // 2
+    score += 6 * sum(1 for l in range(LIGNES) if grille[l][centre] == jeton)
+    return score
+
+
+def minimax(grille, profondeur, alpha, beta, maximise, jeton_ia):
+    """Renvoie (colonne, score) pour le joueur `jeton_ia`.
+
+    Élagage alpha-bêta ; les victoires proches valent plus que les
+    lointaines (bonus `profondeur`) pour que l'IA conclue vite et
+    retarde au maximum une défaite inévitable.
+    """
+    adversaire = autre(jeton_ia)
+    if victoire(grille, jeton_ia):
+        return None, SCORE_VICTOIRE + profondeur
+    if victoire(grille, adversaire):
+        return None, -SCORE_VICTOIRE - profondeur
+    if grille_pleine(grille):
+        return None, 0
+    if profondeur == 0:
+        return None, evaluer(grille, jeton_ia)
+
+    centre = COLONNES // 2
+    jouables = sorted(colonnes_jouables(grille),
+                      key=lambda c: (abs(c - centre), random.random()))
+    jeton_courant = jeton_ia if maximise else adversaire
+    meilleure_colonne = jouables[0]
+    meilleur_score = -float("inf") if maximise else float("inf")
+    for colonne in jouables:
+        jouer_coup(grille, colonne, jeton_courant)
+        _, score = minimax(grille, profondeur - 1, alpha, beta, not maximise, jeton_ia)
+        annuler_coup(grille, colonne)
+        if maximise:
+            if score > meilleur_score:
+                meilleur_score, meilleure_colonne = score, colonne
+            alpha = max(alpha, meilleur_score)
+        else:
+            if score < meilleur_score:
+                meilleur_score, meilleure_colonne = score, colonne
+            beta = min(beta, meilleur_score)
+        if alpha >= beta:
+            break
+    return meilleure_colonne, meilleur_score
+
+
+def coup_minimax(grille, jeton):
+    colonne, _ = minimax(grille, PROFONDEUR_MINIMAX, -float("inf"), float("inf"), True, jeton)
+    return colonne
 
 
 # ---------------------------------------------------------------------------
@@ -306,18 +400,23 @@ def fin_de_partie(ecran, grille, gagnees, jeton, message):
         ecran.timeout(-1)
 
 
-def partie(ecran, contre_ordinateur):
-    """Joue une partie ; renvoie 'r' (rejouer), 'm' (menu) ou None (quitter)."""
+def partie(ecran, ia):
+    """Joue une partie ; renvoie 'r' (rejouer), 'm' (menu) ou None (quitter).
+
+    `ia` est None (joueur contre joueur) ou la fonction qui choisit le
+    coup de l'ordinateur, qui joue toujours Jaune.
+    """
     grille = nouvelle_grille()
     curseur = COLONNES // 2
     tour = 0
     while True:
         jeton = JETONS[tour % 2]
-        if contre_ordinateur and jeton == JETONS[1]:
+        if ia is not None and jeton == JETONS[1]:
             geo = attendre_taille(ecran)
             dessiner_tout(ecran, grille, geo, None, jeton, "● L'ordinateur réfléchit…")
-            time.sleep(0.5)
-            colonne = coup_ordinateur(grille, jeton)
+            debut = time.time()
+            colonne = ia(grille, jeton)
+            time.sleep(max(0.0, 0.5 - (time.time() - debut)))
         else:
             colonne, curseur = choisir_colonne(ecran, grille, jeton, curseur)
             if colonne is None:
@@ -329,7 +428,7 @@ def partie(ecran, contre_ordinateur):
 
         gagnees = positions_victoire(grille, jeton)
         if gagnees:
-            if contre_ordinateur and jeton == JETONS[1]:
+            if ia is not None and jeton == JETONS[1]:
                 message = "● L'ordinateur gagne ! — r rejouer · m menu · q quitter"
             else:
                 message = f"● {NOMS[jeton]} gagne ! — r rejouer · m menu · q quitter"
@@ -340,8 +439,13 @@ def partie(ecran, contre_ordinateur):
 
 
 def menu(ecran):
-    """Écran d'accueil ; renvoie True (contre l'ordinateur), False ou None."""
-    options = ("Joueur contre joueur", "Joueur contre ordinateur", "Quitter")
+    """Écran d'accueil ; renvoie l'IA choisie, False (JcJ) ou None (quitter)."""
+    options = (
+        ("Joueur contre joueur", False),
+        ("Ordinateur — facile", coup_ordinateur),
+        ("Ordinateur — difficile (minimax)", coup_minimax),
+        ("Quitter", None),
+    )
     selection = 0
     while True:
         haut, _ = ecran.getmaxyx()
@@ -349,9 +453,9 @@ def menu(ecran):
         y = max(1, haut // 2 - 4)
         centrer(ecran, y, "● P U I S S A N C E  4 ●", curses.color_pair(PAIRE_TITRE) | curses.A_BOLD)
         centrer(ecran, y + 1, "●  ●  ●  ●", curses.color_pair(PAIRE_X))
-        for i, option in enumerate(options):
+        for i, (libelle, _) in enumerate(options):
             attr = curses.A_REVERSE | curses.A_BOLD if i == selection else 0
-            centrer(ecran, y + 3 + i, f"  {option}  ", attr)
+            centrer(ecran, y + 3 + i, f"  {libelle}  ", attr)
         centrer(ecran, haut - 1, "↑/↓ : choisir · Entrée : valider · q : quitter",
                 curses.color_pair(PAIRE_AIDE) | curses.A_DIM)
         ecran.refresh()
@@ -363,19 +467,18 @@ def menu(ecran):
         elif touche == curses.KEY_DOWN:
             selection = (selection + 1) % len(options)
         elif touche in (curses.KEY_ENTER, 10, 13, ord(" ")):
-            if selection == 2:
-                return None
-            return selection == 1
+            return options[selection][1]
 
 
 def application(ecran):
     init_interface(ecran)
     while True:
-        contre_ordinateur = menu(ecran)
-        if contre_ordinateur is None:
+        choix = menu(ecran)
+        if choix is None:
             return
+        ia = choix or None  # False (JcJ) -> pas d'IA
         while True:
-            suite = partie(ecran, contre_ordinateur)
+            suite = partie(ecran, ia)
             if suite == "r":
                 continue
             if suite == "m":

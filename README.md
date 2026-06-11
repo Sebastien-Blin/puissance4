@@ -29,7 +29,12 @@ python3 puissance4.py
 ## Modes de jeu
 
 - **Joueur contre joueur** : deux joueurs s'affrontent sur le même clavier.
-- **Joueur contre ordinateur** : l'IA gagne quand elle le peut, bloque vos alignements et privilégie le centre.
+- **Ordinateur — facile** : l'IA gagne quand elle le peut, bloque vos
+  alignements et privilégie le centre, sans anticiper plus loin.
+- **Ordinateur — difficile** : IA minimax avec élagage alpha-bêta
+  (profondeur 6). Elle anticipe les coups suivants, prépare des doubles
+  menaces et évalue les positions (alignements ouverts, contrôle du
+  centre). Comptez jusqu'à ~2 s de réflexion par coup.
 
 ## Règles
 
