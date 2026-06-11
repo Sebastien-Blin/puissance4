@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 .claude/
+
+# Xcode / Swift
+.build/
+xcuserdata/
+*.xcworkspace/xcuserdata/
+DerivedData/

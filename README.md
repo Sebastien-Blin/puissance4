@@ -1,10 +1,12 @@
 # Puissance 4
 
-Jeu de Puissance 4 en mode console, écrit en Python (aucune dépendance
-externe : l'interface utilise `curses`, fourni avec Python sous
-macOS/Linux).
+Jeu de Puissance 4 en deux déclinaisons :
 
-## Lancer le jeu
+- **`puissance4.py`** — version console en Python (interface `curses`,
+  aucune dépendance externe).
+- **`Puissance4.swiftpm/`** — application native iPad en SwiftUI.
+
+## Version console
 
 ```bash
 python3 puissance4.py
@@ -38,6 +40,29 @@ python3 puissance4.py
   (profondeur 6). Elle anticipe les coups suivants, prépare des doubles
   menaces et évalue les positions (alignements ouverts, contrôle du
   centre). Comptez jusqu'à ~2 s de réflexion par coup.
+
+## Application iPad (SwiftUI)
+
+Le dossier `Puissance4.swiftpm` est un projet d'app native :
+
+- Plateau bleu à trous avec jetons brillants, chute animée avec rebond,
+  pulsation de l'alignement gagnant, retours haptiques.
+- Mêmes modes que la console : deux joueurs, IA facile, IA minimax
+  (profondeur 7 — Swift le permet sans temps d'attente).
+- Score de session, écran d'accueil, orientations portrait et paysage.
+
+### Lancer sur iPad (sans Mac)
+
+1. Installer l'app gratuite **Swift Playgrounds** depuis l'App Store.
+2. Copier le dossier `Puissance4.swiftpm` sur l'iPad (iCloud Drive,
+   AirDrop ou « Fichiers »).
+3. L'ouvrir dans Swift Playgrounds et appuyer sur **Exécuter**.
+
+### Lancer depuis un Mac
+
+Ouvrir `Puissance4.swiftpm` avec Xcode, choisir un simulateur iPad (ou
+votre iPad branché) et lancer avec ⌘R. Un compte Apple gratuit suffit
+pour l'installer sur votre propre appareil.
 
 ## Règles
 
