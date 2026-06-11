@@ -12,8 +12,11 @@ python3 puissance4.py
 
 ## Interface
 
-- Plateau coloré centré à l'écran, avec animation de chute des jetons et
-  clignotement de l'alignement gagnant.
+- Plateau bleu plein percé de trous sombres, comme le vrai jeu, centré à
+  l'écran ; les jetons tombent avec une accélération et un petit flash à
+  l'atterrissage, et l'alignement gagnant clignote.
+- Score de la session (victoires de chaque joueur, nuls) affiché sous le
+  titre, remis à zéro au retour au menu.
 - S'adapte en direct à la taille du terminal : les cases grossissent dans
   une grande fenêtre, et un mode compact prend le relais dans une petite.
 

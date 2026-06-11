@@ -204,8 +204,15 @@ PAIRE_O = 2
 PAIRE_CADRE = 3
 PAIRE_TITRE = 4
 PAIRE_AIDE = 5
+PAIRE_PLATEAU = 6    # fond bleu du plateau
+PAIRE_X_PLATEAU = 7  # jeton rouge sur le plateau
+PAIRE_O_PLATEAU = 8  # jeton jaune sur le plateau
+PAIRE_TROU = 9       # case vide (trou sombre) sur le plateau
 
 AIDE = "←/→ ou 1-7 : choisir · Entrée/Espace : jouer · q : quitter"
+
+# Scores de la session (réinitialisés à chaque retour au menu)
+SCORES = {"X": 0, "O": 0, "nul": 0}
 
 
 def init_interface(ecran):
@@ -216,6 +223,10 @@ def init_interface(ecran):
     curses.init_pair(PAIRE_CADRE, curses.COLOR_BLUE, -1)
     curses.init_pair(PAIRE_TITRE, curses.COLOR_CYAN, -1)
     curses.init_pair(PAIRE_AIDE, curses.COLOR_WHITE, -1)
+    curses.init_pair(PAIRE_PLATEAU, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(PAIRE_X_PLATEAU, curses.COLOR_RED, curses.COLOR_BLUE)
+    curses.init_pair(PAIRE_O_PLATEAU, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+    curses.init_pair(PAIRE_TROU, curses.COLOR_BLACK, curses.COLOR_BLUE)
     ecran.keypad(True)
 
 
@@ -276,9 +287,15 @@ def case_coords(geo, ligne, colonne):
     return y, x0 + colonne * (cw + 1) + 1
 
 
-def dessiner_jeton(ecran, geo, ligne, colonne, jeton):
+def dessiner_jeton(ecran, geo, ligne, colonne, jeton, attr_extra=0):
+    """Dessine un jeton, ou le trou sombre de la case si `jeton` est VIDE."""
     cw, ch = geo[0], geo[1]
-    attr = paire_jeton(jeton) | curses.A_BOLD
+    if jeton == VIDE:
+        attr = curses.color_pair(PAIRE_TROU)
+    else:
+        paire = PAIRE_X_PLATEAU if jeton == JETONS[0] else PAIRE_O_PLATEAU
+        attr = curses.color_pair(paire) | curses.A_BOLD
+    attr |= attr_extra
     y, x_case = case_coords(geo, ligne, colonne)
     yc = y + (ch - 1) // 2
     if ch >= 3 and cw >= 7:
@@ -289,27 +306,35 @@ def dessiner_jeton(ecran, geo, ligne, colonne, jeton):
         ecrire(ecran, yc, x_case + (cw - 1) // 2, "●", attr)
 
 
-def dessiner_plateau(ecran, grille, geo, masquees=()):
+def dessiner_plateau(ecran, grille, geo, masquees=(), curseur=None):
+    """Plateau bleu plein percé de trous, à la manière du vrai jeu."""
     cw, ch, y0, x0, sep = geo
-    attr_cadre = curses.color_pair(PAIRE_CADRE)
-    segment = "─" * cw
-    hauteur = hauteur_plateau(ch, sep)
-    for dy in range(hauteur):
-        y = y0 + dy
-        if dy == 0 or dy == hauteur - 1 or (sep and dy % (ch + 1) == 0):
-            gauche, milieu, droite = (
-                ("┌", "┬", "┐") if dy == 0
-                else ("└", "┴", "┘") if dy == hauteur - 1
-                else ("├", "┼", "┤")
-            )
-            ecrire(ecran, y, x0, gauche + milieu.join([segment] * COLONNES) + droite, attr_cadre)
-        else:
-            for c in range(COLONNES + 1):
-                ecrire(ecran, y, x0 + c * (cw + 1), "│", attr_cadre)
+    largeur = COLONNES * (cw + 1) + 1
+    fond = curses.color_pair(PAIRE_PLATEAU)
+    for dy in range(hauteur_plateau(ch, sep)):
+        ecrire(ecran, y0 + dy, x0, " " * largeur, fond)
     for l in range(LIGNES):
         for c in range(COLONNES):
-            if grille[l][c] != VIDE and (l, c) not in masquees:
-                dessiner_jeton(ecran, geo, l, c, grille[l][c])
+            jeton = VIDE if (l, c) in masquees else grille[l][c]
+            extra = curses.A_BOLD if jeton == VIDE and c == curseur else 0
+            dessiner_jeton(ecran, geo, l, c, jeton, extra)
+
+
+def dessiner_scores(ecran, y):
+    if SCORES["X"] + SCORES["O"] + SCORES["nul"] == 0:
+        return
+    _, larg = ecran.getmaxyx()
+    nuls = f"   nuls : {SCORES['nul']}" if SCORES["nul"] else ""
+    segments = (
+        (f"● Rouge {SCORES['X']}", paire_jeton("X") | curses.A_BOLD),
+        ("  —  ", curses.color_pair(PAIRE_AIDE) | curses.A_DIM),
+        (f"{SCORES['O']} Jaune ●", paire_jeton("O") | curses.A_BOLD),
+        (nuls, curses.color_pair(PAIRE_AIDE) | curses.A_DIM),
+    )
+    x = max(0, (larg - sum(len(s) for s, _ in segments)) // 2)
+    for texte, attr in segments:
+        ecrire(ecran, y, x, texte, attr)
+        x += len(texte)
 
 
 def dessiner_tout(ecran, grille, geo, curseur=None, jeton=None, statut="", masquees=()):
@@ -318,6 +343,8 @@ def dessiner_tout(ecran, grille, geo, curseur=None, jeton=None, statut="", masqu
     cw, ch, y0, x0, sep = geo
     if y0 >= 4:
         centrer(ecran, 1, "● P U I S S A N C E  4 ●", curses.color_pair(PAIRE_TITRE) | curses.A_BOLD)
+    if y0 >= 5:
+        dessiner_scores(ecran, 2)
     for c in range(COLONNES):
         xc = x0 + c * (cw + 1) + 1 + (cw - 1) // 2
         attr = curses.A_BOLD if c == curseur else curses.A_DIM
@@ -325,7 +352,7 @@ def dessiner_tout(ecran, grille, geo, curseur=None, jeton=None, statut="", masqu
     if curseur is not None and jeton is not None:
         xc = x0 + curseur * (cw + 1) + 1 + (cw - 1) // 2
         ecrire(ecran, y0 - 2, xc, "▼", paire_jeton(jeton) | curses.A_BOLD)
-    dessiner_plateau(ecran, grille, geo, masquees)
+    dessiner_plateau(ecran, grille, geo, masquees, curseur)
     if statut:
         attr = (paire_jeton(jeton) if jeton else curses.color_pair(PAIRE_AIDE)) | curses.A_BOLD
         centrer(ecran, y0 + hauteur_plateau(ch, sep) + 1, statut, attr)
@@ -348,11 +375,19 @@ def attendre_taille(ecran):
 
 
 def animer_chute(ecran, grille, geo, colonne, ligne_finale, jeton, statut):
+    delai = 0.07
     for l in range(ligne_finale + 1):
         dessiner_tout(ecran, grille, geo, None, jeton, statut)
         dessiner_jeton(ecran, geo, l, colonne, jeton)
         ecran.refresh()
-        time.sleep(0.03)
+        time.sleep(delai)
+        delai = max(0.02, delai * 0.8)  # le jeton accélère en tombant
+    # petit flash à l'atterrissage
+    dessiner_jeton(ecran, geo, ligne_finale, colonne, jeton, curses.A_REVERSE)
+    ecran.refresh()
+    time.sleep(0.08)
+    dessiner_jeton(ecran, geo, ligne_finale, colonne, jeton)
+    ecran.refresh()
 
 
 def choisir_colonne(ecran, grille, jeton, curseur):
@@ -428,12 +463,14 @@ def partie(ecran, ia):
 
         gagnees = positions_victoire(grille, jeton)
         if gagnees:
+            SCORES[jeton] += 1
             if ia is not None and jeton == JETONS[1]:
                 message = "● L'ordinateur gagne ! — r rejouer · m menu · q quitter"
             else:
                 message = f"● {NOMS[jeton]} gagne ! — r rejouer · m menu · q quitter"
             return fin_de_partie(ecran, grille, gagnees, jeton, message)
         if grille_pleine(grille):
+            SCORES["nul"] += 1
             return fin_de_partie(ecran, grille, None, None, "Match nul ! — r rejouer · m menu · q quitter")
         tour += 1
 
@@ -447,15 +484,27 @@ def menu(ecran):
         ("Quitter", None),
     )
     selection = 0
+    titre = "P U I S S A N C E  4"
+    interieur = max(len(titre), max(len(lib) for lib, _ in options) + 4) + 6
     while True:
-        haut, _ = ecran.getmaxyx()
+        haut, larg = ecran.getmaxyx()
         ecran.erase()
-        y = max(1, haut // 2 - 4)
-        centrer(ecran, y, "● P U I S S A N C E  4 ●", curses.color_pair(PAIRE_TITRE) | curses.A_BOLD)
-        centrer(ecran, y + 1, "●  ●  ●  ●", curses.color_pair(PAIRE_X))
+        attr_cadre = curses.color_pair(PAIRE_CADRE) | curses.A_BOLD
+        x0 = max(0, (larg - interieur - 2) // 2)
+        y = max(1, (haut - len(options) - 7) // 2)
+        ecrire(ecran, y, x0, "╔" + "═" * interieur + "╗", attr_cadre)
+        for dy in range(1, len(options) + 5):
+            ecrire(ecran, y + dy, x0, "║" + " " * interieur + "║", attr_cadre)
+        ecrire(ecran, y + len(options) + 5, x0, "╚" + "═" * interieur + "╝", attr_cadre)
+        centrer(ecran, y + 1, titre, curses.color_pair(PAIRE_TITRE) | curses.A_BOLD)
+        # rangée décorative de jetons alternés
+        x_jetons = x0 + 1 + (interieur - 10) // 2
+        for i in range(4):
+            paire = PAIRE_X if i % 2 == 0 else PAIRE_O
+            ecrire(ecran, y + 2, x_jetons + i * 3, "●", curses.color_pair(paire) | curses.A_BOLD)
         for i, (libelle, _) in enumerate(options):
             attr = curses.A_REVERSE | curses.A_BOLD if i == selection else 0
-            centrer(ecran, y + 3 + i, f"  {libelle}  ", attr)
+            centrer(ecran, y + 4 + i, f"  {libelle:^{interieur - 8}}  ", attr)
         centrer(ecran, haut - 1, "↑/↓ : choisir · Entrée : valider · q : quitter",
                 curses.color_pair(PAIRE_AIDE) | curses.A_DIM)
         ecran.refresh()
@@ -477,6 +526,7 @@ def application(ecran):
         if choix is None:
             return
         ia = choix or None  # False (JcJ) -> pas d'IA
+        SCORES.update({"X": 0, "O": 0, "nul": 0})
         while True:
             suite = partie(ecran, ia)
             if suite == "r":
